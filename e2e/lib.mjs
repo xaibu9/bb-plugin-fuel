@@ -195,6 +195,8 @@ export async function seedThreads(bb, { projects = { "web-app": 7, api: 2 }, mod
   return ids;
 }
 
+export const DESKTOP_LAYOUT_CSS = '[data-testid="app-sidebar-top-reserve-row"] div:has(> button[aria-label^="Go back"]){display:none!important}';
+
 /** Headless Chrome page on the instance in light or dark mode. */
 export async function openPage(base, { mode = "dark", path = "/", width = 1280, height = 800, locale = "en-US" } = {}) {
   const browser = await chromium.launch({ channel: "chrome", headless: true, args: [`--lang=${locale}`] });
@@ -203,6 +205,9 @@ export async function openPage(base, { mode = "dark", path = "/", width = 1280, 
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(base + path, { waitUntil: "domcontentloaded" });
+  // The desktop app draws back/forward in the window title bar; a browser tab puts them next to
+  // the New thread button. Screenshots show the desktop layout.
+  await page.addStyleTag({ content: DESKTOP_LAYOUT_CSS }).catch(() => {});
   return { browser, page, errors };
 }
 
