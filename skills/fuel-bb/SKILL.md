@@ -1,6 +1,6 @@
 ---
 name: fuel-bb
-description: Read what the Fuel BB sidebar strip shows (Claude limit windows with forecasts, every Antigravity quota window and per-model quota, a thread's context fill) with the `bb fuel-bb` CLI.
+description: Read what the Fuel BB sidebar strip shows (Claude limit windows with forecasts, every Antigravity quota window and per-model quota, a thread's context fill) with the `bb fuel` CLI.
 ---
 
 # Fuel BB
