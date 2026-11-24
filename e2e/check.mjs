@@ -76,7 +76,7 @@ try {
       await shotBottom(page, "1-empty-settings");
       const listed = await page.$$eval(".lp-field:first-of-type .lp-check", (els) => els.length);
       report.check("settings list every provider bb found", listed === Object.keys(usage).length, `${listed} rows for ${Object.keys(usage).length} providers`);
-      const geminiHint = await page.locator(".lp-field", { hasText: /Read by the plugin|Плагин читает сам/ }).innerText();
+      const geminiHint = await page.locator(".lp-field", { hasText: /Read by the plugin/ }).innerText();
       report.check("Gemini is off with a hint on how it would be read", /agy/.test(geminiHint), geminiHint.replace(/\s+/g, " ").slice(0, 120));
       report.check("no page errors (empty state)", errors.length === 0, errors.slice(0, 3).join(" | "));
     } finally {
@@ -101,7 +101,7 @@ try {
       await page.waitForTimeout(1000);
       await shotBottom(page, "1-gemini-no-agy");
       const text = await page.locator(".lp-pop").innerText();
-      report.check("Gemini popover says agy was not found and offers Check again", /agy/.test(text) && /(Check again|Проверить снова)/.test(text), text.replace(/\s+/g, " ").slice(0, 160));
+      report.check("Gemini popover says agy was not found and offers Check again", /agy/.test(text) && /Check again/.test(text), text.replace(/\s+/g, " ").slice(0, 160));
       report.check("no page errors (no agy)", errors.length === 0, errors.slice(0, 3).join(" | "));
     } finally {
       await browser.close();
@@ -132,8 +132,8 @@ try {
       await shotBottom(page, "2-gemini-popover");
       report.check("Gemini popover has no account list while switching is off", (await page.locator(".lp-pop .lp-accounts").count()) === 0);
       const pop = await page.locator(".lp-pop").innerText();
-      report.check("Gemini popover labels the source and the measurement time", /(via agy|через agy)/.test(pop) && /(Measured|Замер)/.test(pop), pop.replace(/\s+/g, " ").slice(0, 160));
-      report.check("Gemini popover says used, not left", !/(left|осталось)/i.test(pop));
+      report.check("Gemini popover labels the source and the measurement time", /via agy/.test(pop) && /Measured/.test(pop), pop.replace(/\s+/g, " ").slice(0, 160));
+      report.check("Gemini popover says used, not left", !/\bleft\b/i.test(pop));
       report.check("no page errors (Kimi + agy)", errors.length === 0, errors.slice(0, 3).join(" | "));
     } finally {
       await browser.close();
