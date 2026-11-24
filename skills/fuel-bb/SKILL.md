@@ -23,7 +23,7 @@ Saved logins are copies of the Keychain item `gemini`/`antigravity` under the se
 
 ## Gemini quota source
 
-The quota API (`retrieveUserQuotaSummary`) returns only the Claude and GPT group; the Gemini weekly and 5-hour windows come from `agy -p /usage` (no model turn, ~10 s, run at most every 5 minutes, at once after a switch or with `status --refresh`). The API is the fallback when agy fails. An unused window reads 100% left with a reset one full window from now; the popover then hides the reset.
+The quota API (`retrieveUserQuotaSummary`) returns only the Claude and GPT group; the Gemini weekly and 5-hour windows come from `agy -p /usage` (no model turn, ~10 s). agy runs only while Gemini is in use: every 5 minutes while an Antigravity thread answers, once after its turn, when the popover opens on a reading older than 2 minutes, after an account switch, with `status --refresh`, and on the `geminiBackground` setting (`off`, `30m` default, `1h`). The plugin log names each read and its reason. The API is the fallback when agy fails. An unused window reads 100% left with a reset one full window from now; the popover then hides the reset.
 
 Gemini is read with the agy OAuth token from the macOS Keychain (service `gemini`); when it is expired the plugin runs `agy models` to refresh it. A failure shows the reason in the Gemini popover and in `bb plugin logs fuel-bb`.
 

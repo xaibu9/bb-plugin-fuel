@@ -140,6 +140,14 @@ try {
     }
     const accounts = JSON.parse((await bb.cli(["fuel", "accounts", "--json"])) ?? "{}");
     report.check("account switching is still off", accounts.enabled === false);
+    // No Antigravity thread works here: after the first read, a full poll cycle must not start agy again.
+    const agyReads = async () => ((await bb.cli(["plugin", "logs", "fuel-bb", "-n", "1000"])) ?? "").split("\n").filter((l) => l.includes("gemini: reading through agy"));
+    const before = await agyReads();
+    report.check("the first Gemini read is logged with its reason", before.length >= 1, before.at(-1)?.slice(0, 160) ?? "none");
+    log("waiting 150 s (one poll cycle) to see that agy stays idle…");
+    await sleep(150_000);
+    const after = await agyReads();
+    report.check("with no Antigravity thread working, agy is not started again", after.length === before.length, after.slice(before.length).join(" | ").slice(0, 300));
   }
 
   // 3. Shared accent with Folio BB.

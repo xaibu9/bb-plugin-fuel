@@ -17,7 +17,11 @@ const IDLE_STATUSES = new Set(["idle", "error"]);
 
 const FORECAST_PLUGIN = "usage-forecast";
 const LOGIN_TIMEOUT_MS = 5 * 60_000;
-const GEMINI_MIN_INTERVAL_MS = 5 * 60_000;
+/** While an Antigravity thread is answering, agy is asked at most this often. */
+const GEMINI_ACTIVE_INTERVAL_MS = 5 * 60_000;
+const GEMINI_BACKGROUND_MS = { off: null, "30m": 30 * 60_000, "1h": 60 * 60_000 } as const;
+const AGY_PROVIDER_ID = "acp-antigravity";
+const WORKING_THREAD_STATUSES = new Set(["active", "starting"]);
 
 const projectionSchema = z.object({ projectedPercent: z.number(), runOutAt: z.number().nullable() }).nullable().catch(null);
 const forecastSnapshotSchema = z.object({
@@ -140,6 +144,14 @@ export default async function plugin(bb: BbPluginApi) {
         "Antigravity account switching — Off by default. When on, the plugin copies the Antigravity (agy) Google sign-in stored in the macOS Keychain into its own Keychain items, swaps it on switch, and restarts Antigravity threads.",
       default: false,
     },
+    geminiBackground: {
+      type: "select",
+      label: "Gemini background check",
+      description: "agy is also asked this often when no Antigravity thread works, for quota spent outside bb (the Antigravity app, the web, another computer).",
+      options: ["off", "30m", "1h"],
+      experimental_optionLabels: { off: "Off", "30m": "Every 30 minutes", "1h": "Once an hour" },
+      default: "30m",
+    },
     agyPath: {
       type: "string",
       label: "Path to the agy CLI — Leave empty to look for agy on PATH and in the usual install folders.",
@@ -186,24 +198,62 @@ export default async function plugin(bb: BbPluginApi) {
   let lastGeminiReason: string | null = null;
 
   // agy /usage takes ~10 s, so Gemini is re-read at most every 5 minutes unless forced.
+  // agy runs only while Gemini is in use: every 5 minutes while an Antigravity thread answers,
+  // once when one finishes a turn, when the popover opens on an old measurement, and on the
+  // optional background interval. Reads go through the single-flight poll, never in parallel.
   let geminiReadAt = 0;
-  let forceGemini = false;
+  let forceGemini: string | null = null;
+  const agyWorking = new Set<string>();
+  const providerOf = new Map<string, string>();
+  const geminiDue = async (): Promise<string | null> => {
+    if (forceGemini !== null) return forceGemini;
+    const last = limits.gemini;
+    if (last.status === "off" || last.status === "pending") return "first read";
+    const age = Date.now() - geminiReadAt;
+    if (agyWorking.size > 0 && age >= GEMINI_ACTIVE_INTERVAL_MS) return "antigravity thread working";
+    const background = GEMINI_BACKGROUND_MS[(await settings.get()).geminiBackground as keyof typeof GEMINI_BACKGROUND_MS] ?? null;
+    if (background !== null && age >= background) return "background check";
+    return null;
+  };
   const nextGemini = async (): Promise<Limits["gemini"]> => {
     const last = limits.gemini;
-    if (!forceGemini && last.status !== "off" && last.status !== "pending" && Date.now() - geminiReadAt < GEMINI_MIN_INTERVAL_MS) return last;
-    forceGemini = false;
+    const reason = await geminiDue();
+    if (reason === null) return last;
+    forceGemini = null;
     geminiReadAt = Date.now();
+    bb.log.info(`gemini: reading through agy (${reason})`);
     const read = await readGeminiQuota(await agy());
     return read.ok
       ? { ...last, status: "ok", groups: read.groups, measuredAt: Date.now(), error: null }
       : { ...last, status: "error", error: { code: read.code, message: read.reason } };
   };
   // A poll already running may have read Gemini before the force: poll once more then.
-  const refreshAll = async () => {
-    forceGemini = true;
+  const refreshAll = async (reason = "requested") => {
+    forceGemini = reason;
     await poll();
-    if (forceGemini) await poll();
+    if (forceGemini !== null) await poll();
   };
+  /** Tracks which Antigravity threads are answering; a finished turn triggers one read. */
+  const trackAgy = async (threadId: string) => {
+    let provider = providerOf.get(threadId);
+    const thread = (await bb.sdk.threads.get({ threadId }).catch(() => null)) as { providerId?: string; status?: string } | null;
+    if (thread === null) return;
+    provider = thread.providerId ?? "";
+    providerOf.set(threadId, provider);
+    if (provider !== AGY_PROVIDER_ID) return;
+    const working = WORKING_THREAD_STATUSES.has(thread.status ?? "");
+    if (working) agyWorking.add(threadId);
+    else if (agyWorking.delete(threadId) && (await storedShow())?.[GEMINI_ID] === true) void refreshAll("antigravity turn finished").catch(() => undefined);
+  };
+  void bb.sdk.threads
+    .list({ limit: 500 })
+    .then((threads) => {
+      for (const t of threads as Array<{ id: string; providerId?: string | null; status?: string }>) {
+        providerOf.set(t.id, t.providerId ?? "");
+        if (t.providerId === AGY_PROVIDER_ID && WORKING_THREAD_STATUSES.has(t.status ?? "")) agyWorking.add(t.id);
+      }
+    })
+    .catch(() => undefined);
   // Kimi's access token lives 15 minutes and only kimi refreshes it; between
   // runs the last measured windows are shown (quota only moves while kimi works).
   const KIMI_KEY = "kimi-last";
@@ -422,7 +472,7 @@ export default async function plugin(bb: BbPluginApi) {
     accountAction("switch", async () => {
       const target = await accounts.switchTo(id);
       await restartAntigravity();
-      await refreshAll().catch(() => undefined);
+      await refreshAll("account switched").catch(() => undefined);
       return target.label;
     });
   // Add account: park the current login (it is saved), run agy in a bb
@@ -439,7 +489,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (restore && job.previousId !== null && !(await accounts.signedIn())) await accounts.switchTo(job.previousId).catch(() => undefined);
     await accounts.sync().catch(() => undefined);
     bb.rpc.experimental_invalidate([ACCOUNTS_TAG]);
-    void refreshAll().catch(() => undefined);
+    void refreshAll("account changed").catch(() => undefined);
   };
   const localHostId = async () => {
     const hosts = await bb.sdk.hosts.list();
@@ -549,7 +599,7 @@ export default async function plugin(bb: BbPluginApi) {
       } else if (geminiTurnedOn) {
         limits = { ...limits, gemini: { ...limits.gemini, status: limits.gemini.measuredAt === null ? "pending" : limits.gemini.status } };
         bb.rpc.experimental_invalidate([LIMITS_TAG]);
-        void refreshAll().catch(() => undefined);
+        void refreshAll("turned on").catch(() => undefined);
       }
       return prefs;
     },
@@ -559,7 +609,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
     thread: ({ threadId }) => readThread(threadId),
     refreshGemini: async () => {
-      await refreshAll().catch(() => undefined);
+      await refreshAll("asked from the popover").catch(() => undefined);
       return limits;
     },
     setAccountSwitching: async ({ on }) => {
@@ -588,6 +638,7 @@ export default async function plugin(bb: BbPluginApi) {
     event: "thread:changed",
     callback: (event) => {
       const id = (event as { id?: unknown }).id;
+      if (typeof id === "string" && id !== "" && (providerOf.get(id) ?? AGY_PROVIDER_ID) === AGY_PROVIDER_ID) void trackAgy(id);
       if (typeof id === "string" && restartPending.has(id)) void settlePending(id);
       if (typeof id !== "string" || id === "" || timers.has(id)) return;
       const wait = Math.max(0, (lastInvalidated.get(id) ?? 0) + THREAD_INVALIDATE_MIN_MS - Date.now());

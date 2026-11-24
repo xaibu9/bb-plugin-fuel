@@ -23,8 +23,13 @@ The gear in any popover lists every provider bb found, with a checkbox to hide i
   kimi CLI is, the plugin reads `GET <base_url>/usages` with the CLI's own token
   from `~/.kimi-code`. It never refreshes or copies that token.
 - **Gemini (Antigravity).** bb does not report Antigravity limits. The plugin can
-  read them itself through the `agy` CLI (`agy -p /usage`, at most every 5 minutes),
-  falling back to Google's quota endpoint with agy's token from the macOS Keychain.
+  read them itself through the `agy` CLI (`agy -p /usage`, no model request), only while
+  Gemini is in use: every 5 minutes while an Antigravity thread works, once right after its
+  turn, and when you open the Gemini popover on a measurement older than 2 minutes; plus a
+  background check (setting *Gemini background check*: off, every 30 minutes by default, or once
+  an hour) for quota spent outside bb. The popover always shows when it was measured. If agy
+  does not answer, the plugin falls back to Google's quota endpoint with agy's token from the
+  macOS Keychain.
   macOS only. It is off until you tick Gemini under *Read by the plugin* in the
   settings; the strip then shows `···` during the first read and `!` with a hint
   when agy is missing or not signed in.
@@ -57,7 +62,8 @@ plugin"), account switching, accent color and language (auto, English, Russian).
 (`--folio-accent`) when it is installed, otherwise the bb theme accent.
 Change the color in Folio BB and the strip follows at once. A circle picked
 here overrides it for the strip only. In Settings → Installed plugins: account
-switching and the path to `agy` (empty: look on `PATH` and in `~/.local/bin`,
+switching, the Gemini background check (off, every 30 minutes, once an hour) and the path
+to `agy` (empty: look on `PATH` and in `~/.local/bin`,
 `/opt/homebrew/bin`, `/usr/local/bin`).
 
 ## CLI

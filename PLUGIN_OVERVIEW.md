@@ -7,7 +7,7 @@
 
 ## Gemini (Antigravity)
 
-bb does not report Antigravity limits, so the plugin can read them itself through your `agy` CLI. It is off until you tick Gemini under "Read by the plugin" in the strip settings, and works on macOS only. The strip shows `···` during the first read and `!` with a hint when agy is missing or not signed in.
+bb does not report Antigravity limits, so the plugin can read them itself through your `agy` CLI. It is off until you tick Gemini under "Read by the plugin" in the strip settings, and works on macOS only. agy runs only while Gemini is in use (every 5 minutes while an Antigravity thread works, after its turn, when you open the popover) plus a background check every 30 minutes by default for quota spent elsewhere; the popover always shows when it was measured. The strip shows `···` during the first read and `!` with a hint when agy is missing or not signed in.
 
 Optional account switching for Antigravity is off by default. Turning it on shows exactly what it does: it copies agy's Google sign-in between macOS Keychain items and restarts Antigravity threads after a switch.
 

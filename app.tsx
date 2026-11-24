@@ -27,6 +27,7 @@ const HIDE_FOOTER_CLASS = "lp-footer-hidden";
 /** A provider id from bb, `gemini`, or `context`. */
 type Section = string;
 const CONTEXT = "context";
+const GEMINI_STALE_MS = 2 * 60_000;
 
 /** bb's display name and icon record for a provider id. */
 function useProviderInfo(): (id: string) => { name: string; record: { id: string } } {
@@ -965,8 +966,13 @@ function Panel({ threadId, prefs, prefsLoaded, onPrefs }: { threadId: string | n
       setSettings(false);
       setOpen((cur) => (cur === id ? null : id));
       if (id === CONTEXT && threadId !== null) void thread.refetch();
+      // Opening Gemini on a measurement older than 2 minutes asks agy again.
+      const measured = limits.data?.gemini.measuredAt ?? null;
+      if (id === GEMINI_ID && open !== GEMINI_ID && measured !== null && Date.now() - measured > GEMINI_STALE_MS) {
+        void rpc.call("refreshGemini", null).then(() => limits.refetch(), () => undefined);
+      }
     },
-    [thread, threadId],
+    [thread, threadId, limits, rpc, open],
   );
   const onClose = useCallback((restoreFocus: boolean) => {
     setOpen(null);
