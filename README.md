@@ -1,5 +1,7 @@
 # Fuel BB for bb
 
+![Fuel BB](docs/screenshots/cover.png)
+
 A strip in the bb sidebar footer: one button per agent provider with the share of its
 limit already used, plus the open thread's context fill. A click opens the details:
 every limit window, time to reset and, with the
@@ -9,7 +11,6 @@ confirmation.
 
 Plugin id: `fuel-bb`.
 
-![Fuel BB](docs/screenshots/cover.png)
 ![Strip, Gemini popover, settings and the hint when agy is missing](docs/screenshots/popovers.png)
 
 ## Providers
